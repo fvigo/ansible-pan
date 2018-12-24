@@ -161,12 +161,18 @@ def main():
         if serialnumber != 'unknown':
             return module.exit_json(changed=False, serialnumber=serialnumber)
     if auth_code:
-        apply_authcode(xapi, module, auth_code)
+        try:
+            apply_authcode(xapi, module, auth_code)
+        # Handle bug in PAN-OS 8.x where content-type is application/xml but VM series capacity message
+        # is plaintext and looks like this: b'VM Device License installed. Restarting pan services.'
+        # This will make pan-python (at least up to 0.14.0) return a PanXapiError
+        except pan.xapi.PanXapiError as e:
+            if 'ElementTree.fromstring ParseError' in str(e):
+                pass
     else:
         fetch_authcode(xapi, module)
 
     module.exit_json(changed=True, msg="okey dokey")
-
 
 if __name__ == '__main__':
     main()
