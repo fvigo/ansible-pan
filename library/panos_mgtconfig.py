@@ -130,7 +130,6 @@ def get_devicegroup(device, devicegroup):
                 return group
     return False
 
-
 def set_ntp_server(system_settings, new_ntp_server, primary=True):
     ntp = None
     classType = None
