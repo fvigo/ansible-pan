@@ -63,11 +63,21 @@ options:
             - Undersigning authority (CA) that MUST already be presents on the device.
         required: true
         default: null
+    days:
+        description:
+            - Number of days until certificate expires.
+        required: false
+        default: "365"        
     rsa_nbits:
         description:
             - Number of bits used by the RSA algorithm for the certificate generation.
         required: false
         default: "2048"
+    target_template:
+        description:
+            - Name of the target template to run the request on (Panorama only).
+        required: false
+        default: null
 '''
 
 EXAMPLES = '''
@@ -103,25 +113,24 @@ except ImportError:
 
 _PROMPTBUFF = 4096
 
-
 def wait_with_timeout(module, shell, prompt, timeout=60):
     now = time.time()
-    result = ""
+    result = b""
     while True:
         if shell.recv_ready():
             result += shell.recv(_PROMPTBUFF)
-            endresult = result.strip()
+            resultstr = result.decode("utf-8")
+            endresult = resultstr.strip()
             if len(endresult) != 0 and endresult[-1] == prompt:
                 break
 
         if time.time() - now > timeout:
             module.fail_json(msg="Timeout waiting for prompt")
 
-    return result
-
+    return resultstr
 
 def generate_cert(module, ip_address, username, key_filename, password,
-                  cert_cn, cert_friendly_name, signed_by, rsa_nbits):
+                  cert_cn, cert_friendly_name, signed_by, rsa_nbits, days, template):
     stdout = ""
 
     client = paramiko.SSHClient()
@@ -140,16 +149,27 @@ def generate_cert(module, ip_address, username, key_filename, password,
     buff = wait_with_timeout(module, shell, ">")
     stdout += buff
 
+    # set target template
+    if template and len(template) > 1:
+        cmd = 'set system setting target template name {}\n'.format(template)
+        shell.send(cmd)
+        # wait for the shell to complete
+        buff = wait_with_timeout(module, shell, ">")
+        stdout += buff
+
     # generate self-signed certificate
     if isinstance(cert_cn, list):
         cert_cn = cert_cn[0]
     cmd = ' '.join([
         'request certificate generate signed-by',
         signed_by,
+        'days-till-expiry',
+        days,
         'certificate-name',
         cert_friendly_name,
         'name',
         cert_cn,
+
         'algorithm RSA rsa-nbits {0}\n'.format(rsa_nbits),
     ])
     shell.send(cmd)
@@ -177,8 +197,9 @@ def main():
         cert_cn=dict(required=True),
         cert_friendly_name=dict(required=True),
         rsa_nbits=dict(default='2048'),
-        signed_by=dict(required=True)
-
+        signed_by=dict(required=True),
+        days=dict(default='365'),
+        template=dict()
     )
     module = AnsibleModule(argument_spec=argument_spec, supports_check_mode=False,
                            required_one_of=[['key_filename', 'password']])
@@ -193,11 +214,13 @@ def main():
     cert_friendly_name = module.params["cert_friendly_name"]
     signed_by = module.params["signed_by"]
     rsa_nbits = module.params["rsa_nbits"]
+    days = module.params["days"]
+    template = module.params["template"]
 
     try:
         generate_cert(module, ip_address, username, key_filename,
                       password, cert_cn, cert_friendly_name,
-                      signed_by, rsa_nbits)
+                      signed_by, rsa_nbits, days, template)
     except Exception:
         exc = get_exception()
         module.fail_json(msg=exc.message)
