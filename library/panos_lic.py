@@ -169,6 +169,7 @@ def main():
         except pan.xapi.PanXapiError as e:
             if 'ElementTree.fromstring ParseError' in str(e):
                 pass
+            raise
     else:
         fetch_authcode(xapi, module)
 
