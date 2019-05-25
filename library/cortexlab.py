@@ -115,7 +115,7 @@ def setConfigEntry(fw, xpath, value, module):
     #print('Configuration successfully set!')
     return True
 
-def configureNGFW(fw, localuser_name, localuser_phash, admin_phash, extip, datalake_region, module):
+def configureNGFW(fw, localuser_name, localuser_phash, admin_phash, extip, datalake_region, datalake_psk, module):
     if 'hostname' not in fw or 'username' not in fw or 'password' not in fw:
         raise RuntimeError('Firewall credentials not specified!')
 
@@ -138,12 +138,13 @@ def configureNGFW(fw, localuser_name, localuser_phash, admin_phash, extip, datal
     if not setConfigEntry(fw, xpath, element, module):
         raise RuntimeError('Error configuring GP External IP')
 
-    # Configure Data Lake Region
-    # set deviceconfig setting logging logging-service-forwarding logging-service-regions
-    xpath = "/config/deviceconfig/setting/logging/logging-service-forwarding"
-    element = '<logging-service-regions>{}</logging-service-regions><enable>yes</enable>'.format(datalake_region)
-    if not setConfigEntry(fw, xpath, element, module):
-        raise RuntimeError('Error configuring Data Lake Region')
+    # Configure Data Lake Region, only if PSK is enabled
+    if(datalake_psk and datalake_psk != "disabled"):
+        # set deviceconfig setting logging logging-service-forwarding logging-service-regions
+        xpath = "/config/deviceconfig/setting/logging/logging-service-forwarding"
+        element = '<logging-service-regions>{}</logging-service-regions><enable>yes</enable>'.format(datalake_region)
+        if not setConfigEntry(fw, xpath, element, module):
+            raise RuntimeError('Error configuring Data Lake Region')
 
     print('NGFW Configuration complete!')
     return True
@@ -232,9 +233,9 @@ def main():
         #fwSerial = getDeviceSerial(fw, module)
         localuser_phash = getDevicePhash(fw, localuser_newpassword, module)
         admin_phash = getDevicePhash(fw, ngfw_password, module)
-        changed |= configureNGFW(fw, localuser_name, localuser_phash, admin_phash, extip, datalake_region, module)
-        if(datalake_psk):
-            changed |= configureDataLakeWithPSK(gw, admin_phash, datalake_psk, module)
+        changed |= configureNGFW(fw, localuser_name, localuser_phash, admin_phash, extip, datalake_region, datalake_psk, module)
+        if(datalake_psk and datalake_psk != "disabled"):
+            changed |= configureDataLakeWithPSK(fw, admin_phash, datalake_psk, module)
         #no commit changed |= ngfwCommit(fw, module)
     except Exception as e:
         module.fail_json(msg='Got exception: {}'.format(e))
